@@ -8,16 +8,8 @@ import matplotlib.image as mpimg
 #dist_pickle = pickle.load( open( "wide_dist_pickle.p", "rb" ) )
 dist_pickle = pickle.load(open( "calibrated_data.p", "rb" ))
 
-#img = cv2.imread('test_image2.png')
-nx = 9 # the number of inside corners in x
-ny = 6 # the number of inside corners in y
-
-def cal_undistort(img, mtx, dist):
-#    gray = cv2.cvtColor(img,cv2.COLOR_BGR2GRAY)    
-#    ret, mtx, dist, rvecs, tvecs = cv2.calibrateCamera(objpoints, imgpoints, gray.shape[::-1], None, None)
-    undist = cv2.undistort(img, mtx, dist, None, mtx)
-    
-    return undist
+def cal_undistort(img, mtx=dist_pickle['mtx'], dist=dist_pickle['dist']):
+    return cv2.undistort(img, mtx, dist, None, mtx)
 
 
 def warper(img, src, dst):
