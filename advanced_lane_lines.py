@@ -5,8 +5,6 @@ import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
 import glob
 
-
-#dist_pickle = pickle.load( open( "wide_dist_pickle.p", "rb" ) )
 dist_pickle = pickle.load(open( "calibrated_data.p", "rb" ))
 
 def cal_undistort(img, mtx=dist_pickle['mtx'], dist=dist_pickle['dist']):
@@ -67,10 +65,7 @@ def warper(img, src, dst):
 
 # Define a class to receive the characteristics of each line detection
 class Line():
-    def __init__(self):
-        """"""
-
-        self.detected = False
+    def __init__(self):       
 
         self.left_fit = None
         self.right_fit = None
@@ -88,31 +83,27 @@ class Line():
     @staticmethod
     def _build_perspective_transformer():
         """
-
-        :return:
+        :return: src, dst
         """
         corners = np.float32([[252, 697], [585, 456], [700, 456], [1061, 690]])
         new_top_left = np.array([corners[0, 0], 0])
         new_top_right = np.array([corners[3, 0], 0])
-        offset = [50, 0]
+        offset = [40, 0]
 
         src = np.float32([corners[0], corners[1], corners[2], corners[3]])
         dst = np.float32([corners[0] + offset, new_top_left + offset, new_top_right - offset, corners[3] - offset])
 
-        #perspective = PerspectiveTransformer(src, dst)
-#        perspective = warper(image, src, dst)
         return src, dst
 
-    def naive_lane_extractor(self, binary_warped):
+    def lane_extractor(self, binary_warped):
         """
-
         :param binary_warped:
-        :return:
+        :return: fit_leftx, fit_rightx
         """
-        histogram = np.sum(binary_warped[binary_warped.shape[0] / 2:, :, 0], axis=0)
+        histogram = np.sum(binary_warped[binary_warped.shape[0] // 2:, :, 0], axis=0)
 
         # get midpoint of the histogram
-        midpoint = np.int(histogram.shape[0] / 2)
+        midpoint = np.int(histogram.shape[0] // 2)
 
         # get left and right halves of the histogram
         leftx_base = np.argmax(histogram[:midpoint])
@@ -179,67 +170,13 @@ class Line():
         fit_leftx = self.left_fit[0] * fity ** 2 + self.left_fit[1] * fity + self.left_fit[2]
         fit_rightx = self.right_fit[0] * fity ** 2 + self.right_fit[1] * fity + self.right_fit[2]
 
-        self.detected = True
-
         return fit_leftx, fit_rightx
-
-    def smart_lane_extractor(self, binary_warped):
-        """
-
-        :param binary_warped:
-        :return:
-        """
-        # Assume you now have a new warped binary image
-        # from the next frame of video (also called "binary_warped")
-        # It's now much easier to find line pixels!
-        nonzero = binary_warped.nonzero()
-        nonzeroy = np.array(nonzero[0])
-        nonzerox = np.array(nonzero[1])
-
-        margin = 75
-
-        left_lane_inds = (
-            (nonzerox > (
-                self.left_fit[0] * (nonzeroy ** 2) + self.left_fit[1] * nonzeroy + self.left_fit[2] - margin)) & (
-                nonzerox < (
-                    self.left_fit[0] * (nonzeroy ** 2) + self.left_fit[1] * nonzeroy + self.left_fit[2] + margin)))
-        right_lane_inds = (
-            (nonzerox > (
-                self.right_fit[0] * (nonzeroy ** 2) + self.right_fit[1] * nonzeroy + self.right_fit[2] - margin)) & (
-                nonzerox < (
-                    self.right_fit[0] * (nonzeroy ** 2) + self.right_fit[1] * nonzeroy + self.right_fit[2] + margin)))
-
-        # Again, extract left and right line pixel positions
-        leftx = nonzerox[left_lane_inds]
-        lefty = nonzeroy[left_lane_inds]
-        rightx = nonzerox[right_lane_inds]
-        righty = nonzeroy[right_lane_inds]
-        # Fit a second order polynomial to each
-        self.left_fit = np.polyfit(lefty, leftx, 2)
-        self.right_fit = np.polyfit(righty, rightx, 2)
-        # Generate x and y values for plotting
-        ploty = np.linspace(0, binary_warped.shape[0] - 1, binary_warped.shape[0])
-        left_fitx = self.left_fit[0] * ploty ** 2 + self.left_fit[1] * ploty + self.left_fit[2]
-        right_fitx = self.right_fit[0] * ploty ** 2 + self.right_fit[1] * ploty + self.right_fit[2]
-
-        return left_fitx, right_fitx
-
+        
     def calculate_road_info(self, image_size, left_x, right_x):
         """
         This method calculates left and right road curvature and off of the vehicle from the center
         of the lane
-
-        :param image_size:
-            Size of the image
-
-        :param left_x:
-            X coordinated of left lane pixels
-
-        :param right_x:
-            X coordinated of right lane pixels
-
-        :return:
-            Left and right curvatures of the lane and off of the vehicle from the center of the lane
+        :return: Left and right curvatures of the lane and off of the vehicle from the center of the lane
         """
         # first we calculate the intercept points at the bottom of our image
         left_intercept = self.left_fit[0] * image_size[0] ** 2 + self.left_fit[1] * image_size[0] + self.left_fit[2]
@@ -250,7 +187,6 @@ class Line():
         assert road_width_in_pixels > 0, 'Road width in pixel can not be negative'
 
         # Since average highway lane line width in US is about 3.7m
-        # Source: https://en.wikipedia.org/wiki/Lane#Lane_width
         # we calculate length per pixel in meters
         meters_per_pixel_x_dir = 3.7 / road_width_in_pixels
         meters_per_pixel_y_dir = 30 / road_width_in_pixels
@@ -280,18 +216,7 @@ class Line():
     def fill_lane_lines(image, fit_left_x, fit_right_x):
         """
         This utility method highlights correct lane section on the road
-
-        :param image:
-            On top of this image, my lane will be highlighted
-
-        :param fit_left_x:
-            X coordinated of the left second order polynomial
-
-        :param fit_right_x:
-            X coordinated of the right second order polynomial
-
-        :return:
-            The input image with highlighted lane line.
+        :return: The input image with highlighted lane line.
         """
         copy_image = np.zeros_like(image)
         fit_y = np.linspace(0, copy_image.shape[0] - 1, copy_image.shape[0])
@@ -307,15 +232,7 @@ class Line():
     def merge_images(self, binary_img, src_image):
         """
         This utility method merges merges two images
-
-        :param binary_img:
-            Binary image with highlighted lane segment.
-
-        :param src_image:
-            The original image on top of it we are going to highlight lane segment.
-
-        :return:
-            The Original image with highlighted lane segment.
+        :return: The Original image with highlighted lane segment.
         """
         copy_binary = np.copy(binary_img)
         copy_src_img = np.copy(src_image)
@@ -329,24 +246,16 @@ class Line():
         """
         This method takes an image as an input and produces an image with
         1. Highlighted lane line
-        2. Left and right lane curvatures (in meters)
-        3. Vehicle offset of the center of the lane (in meters)
-
-        :param image:
-            Source image
-
-        :return:
-            Annotated image with lane line details
+        2. Left and right lane curvatures
+        3. Vehicle offset of the center of the lane
+        :return: Annotated image with lane line details
         """
         image = np.copy(image)
         undistorted_image = cal_undistort(image)
         warped_image = warper(undistorted_image, self.src, self.dst)
         binary_image = pipeline(warped_image)
 
-        if self.detected:
-            fit_leftx, fit_rightx = self.smart_lane_extractor(binary_image)
-        else:
-            fit_leftx, fit_rightx = self.naive_lane_extractor(binary_image)
+        fit_leftx, fit_rightx = self.lane_extractor(binary_image)
 
         self.buffer_left[self.buffer_index] = fit_leftx
         self.buffer_right[self.buffer_index] = fit_rightx
@@ -367,10 +276,11 @@ class Line():
         curvature_text = 'Left Curvature: {:.2f} m    Right Curvature: {:.2f} m'.format(left_curvature, right_curvature)
 
         font = cv2.FONT_HERSHEY_SIMPLEX
-        cv2.putText(image, curvature_text, (100, 50), font, 1, (221, 28, 119), 2)
+
+        cv2.putText(image, curvature_text, (100, 50), font, 1, (220, 220, 220), 2)
 
         deviation_info = 'Lane Deviation: {:.3f} m'.format(calculated_deviation)
-        cv2.putText(image, deviation_info, (100, 90), font, 1, (221, 28, 119), 2)
+        cv2.putText(image, deviation_info, (100, 100), font, 1, (220, 220, 220), 2)
 
         filled_image = self.fill_lane_lines(binary_image, ave_left, ave_right)
 
